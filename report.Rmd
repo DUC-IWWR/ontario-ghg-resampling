@@ -1,0 +1,136 @@
+---
+title: "Ontario Greenhouse Gas Resampling Efforts"
+author: "Brandon Edwards"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(ggpubr)
+theme_set(theme_pubclean())
+```
+
+The purpose of this report is to determine whether the 16 restored wetland sites in southern Ontario can be sampled 3 times in 2025, rather than the usual 5 times as done in 2023 and 2024. Let's first read in the data and clean it up a bit.
+
+```{r}
+data <- read.csv("data/raw/data.csv")
+
+# Remove extra empty columns
+data <- data[, 1:7]
+
+#' Add visit number as a proxy for the date. We'll see later on if we want
+#' the actual date or not. But, 1 - 5 will correspond with early to late
+
+data$Visit <- rep(seq(1,5), times = nrow(data) / 5)
+
+# Now remove errant data points
+data <- data[-which(data$pCO2.corrected == "Dillution Needed" |
+                      data$pCO2.corrected == "Broken Vial"), ]
+
+# Must also make sure the values are numeric again
+data$pCO2.corrected <- as.numeric(data$pCO2.corrected)
+data$pCH4.insitu <- as.numeric(data$pCH4.insitu)
+data$pN2O.insitu <- as.numeric(data$pN2O.insitu)
+
+# And make the year a factor
+data$Year <- factor(data$Year, levels = c("2023", "2024"))
+```
+
+# Visualize Data
+
+### Greenhouse Gases by Year
+
+Let's visualize this data before deciding what analyses we should run to determine sample size requirements. First let's plot just the distribution of values by year. 
+
+Here is CO2:
+
+```{r, echo = FALSE}
+
+ggplot(data = data, aes(x = Year, y = log(pCO2.corrected), group = Year, color = Year)) +
+  geom_boxplot()
+```
+
+
+
+And now here is CH4:
+
+```{r, echo = FALSE}
+
+ggplot(data = data, aes(x = Year, y = log(pCH4.insitu), group = Year, color = Year)) +
+  geom_boxplot()
+```
+
+And now here is N2O:
+
+```{r, echo = FALSE}
+
+ggplot(data = data, aes(x = Year, y = log(pN2O.insitu), group = Year, color = Year)) +
+  geom_boxplot()
+```
+
+### Greenhouse Gases by Site and Site Visit
+
+Let's see how each of the sites vary, particularly with the site visit number (as a proxy for time in the year). 
+
+We will first make a plot of CO2 versus visit, for each site, coloured by year.
+
+```{r, echo=FALSE}
+
+co2_plot <- ggplot(data = data, aes(x = Visit, y = log(pCO2.corrected), group = Year, color = Year)) +
+  geom_line() +
+  facet_wrap(~Site)
+
+print(co2_plot)
+
+```
+
+
+Now for CH4
+
+```{r, echo=FALSE}
+
+ch4_plot <- ggplot(data = data, aes(x = Visit, y = log(pCH4.insitu), group = Year, color = Year)) +
+  geom_line() +
+  facet_wrap(~Site)
+
+print(ch4_plot)
+
+```
+
+
+Now for N2O
+
+```{r, echo=FALSE}
+
+n2o_plot <- ggplot(data = data, aes(x = Visit, y = log(pN2O.insitu), group = Year, color = Year)) +
+  geom_line() +
+  facet_wrap(~Site)
+
+print(n2o_plot)
+
+```
+
+# Correlations within Data
+
+It would be wise to assess if there are any correlations among the three measured responses here. We can do this as an overall correlation:
+
+```{r}
+
+cor(data[, c("pCO2.corrected", "pCH4.insitu", "pN2O.insitu")])
+```
+
+But we can also do this stratified by year, to see if there are any changes in these correlations between the two years. First let's do 2023:
+
+```{r}
+
+cor(data[which(data$Year == "2023"), c("pCO2.corrected", "pCH4.insitu", "pN2O.insitu")])
+```
+
+Now let's do 2024:
+
+```{r}
+
+cor(data[which(data$Year == "2024"), c("pCO2.corrected", "pCH4.insitu", "pN2O.insitu")])
+```
