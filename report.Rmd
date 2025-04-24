@@ -7,27 +7,27 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(cmdstanr)
 library(ggplot2)
 library(ggpubr)
+library(grid)
+library(bayesplot)
 theme_set(theme_pubclean())
 ```
 
 The purpose of this report is to determine whether the 16 restored wetland sites in southern Ontario can be sampled 3 times in 2025, rather than the usual 5 times as done in 2023 and 2024. Let's first read in the data and clean it up a bit.
 
-```{r}
-data <- read.csv("data/raw/data.csv")
+```{r data_cleaning}
+data <- read.csv("data/raw/data_full.csv")
 
 # Remove extra empty columns
-data <- data[, 1:7]
+data <- data[, 1:8]
 
 #' Add visit number as a proxy for the date. We'll see later on if we want
 #' the actual date or not. But, 1 - 5 will correspond with early to late
 
 data$Visit <- rep(seq(1,5), times = nrow(data) / 5)
-
-# Now remove errant data points
-data <- data[-which(data$pCO2.corrected == "Dillution Needed" |
-                      data$pCO2.corrected == "Broken Vial"), ]
+data$Visit <- factor(data$Visit, levels = c("1", "2", "3", "4", "5"))
 
 # Must also make sure the values are numeric again
 data$pCO2.corrected <- as.numeric(data$pCO2.corrected)
@@ -40,49 +40,89 @@ data$Year <- factor(data$Year, levels = c("2023", "2024"))
 
 # Visualize Data
 
-### Greenhouse Gases by Year
+### Greenhouse Gas by Visit x Year Combination
 
-Let's visualize this data before deciding what analyses we should run to determine sample size requirements. First let's plot just the distribution of values by year. 
+Before running any analyses, let's see how the different greenhouse gases vary through the year (via the visit number), and across the years. We will plot the site visits and year simultaneously as boxplots, such that we have visit number on the x axis, the log greenhouse gas amount on the y axis, and boxplots coloured by year. This will allow us to see if there is any particular interactions we should be thinking about when considering future sample size amounts.
 
-Here is CO2:
+Let's first look at CO2.
 
-```{r, echo = FALSE}
+```{r plot_co2_visityear, echo=FALSE}
 
-ggplot(data = data, aes(x = Year, y = log(pCO2.corrected), group = Year, color = Year)) +
-  geom_boxplot()
+ggplot(data = data, aes(x = Visit, y = log(pCO2.corrected))) +
+  geom_boxplot(aes(fill = Year)) +
+  #facet_wrap(~Site) +
+  NULL
+
 ```
 
 
+Now for CH4
 
-And now here is CH4:
+```{r plot_ch4_visityear, echo=FALSE}
 
-```{r, echo = FALSE}
+ggplot(data = data, aes(x = Visit, y = log(pCH4.insitu))) +
+  geom_boxplot(aes(fill = Year)) +
+  #facet_wrap(~Site) +
+  NULL
 
-ggplot(data = data, aes(x = Year, y = log(pCH4.insitu), group = Year, color = Year)) +
-  geom_boxplot()
 ```
 
-And now here is N2O:
 
-```{r, echo = FALSE}
+Now for N2O
 
-ggplot(data = data, aes(x = Year, y = log(pN2O.insitu), group = Year, color = Year)) +
-  geom_boxplot()
+```{r plot_n2o_visityear, echo=FALSE}
+
+ggplot(data = data, aes(x = Visit, y = log(pN2O.insitu))) +
+  geom_boxplot(aes(fill = Year)) +
+  #facet_wrap(~Site) +
+  NULL
 ```
 
-### Greenhouse Gases by Site and Site Visit
+### Greenhouse Gas by Site x Year Combination
 
-Let's see how each of the sites vary, particularly with the site visit number (as a proxy for time in the year). 
+We can also see how the sites vary by year with greenhouse gas amounts. Let's first start with CO2:
+
+```{r plot_co2_siteyear, echo=FALSE}
+
+ggplot(data = data, aes(x = Year, y = log(pCO2.corrected))) +
+  geom_boxplot(aes(fill = Year)) +
+  facet_wrap(~Site)
+
+
+```
+
+And now for CH4:
+
+```{r plot_ch4_siteyear, echo=FALSE}
+
+ggplot(data = data, aes(x = Year, y = log(pCH4.insitu))) +
+  geom_boxplot(aes(fill = Year)) +
+  facet_wrap(~Site)
+
+```
+
+And finally for N2O:
+
+```{r plot_n2o_siteyear, echo=FALSE}
+
+ggplot(data = data, aes(x = Year, y = log(pN2O.insitu))) +
+  geom_boxplot(aes(fill = Year)) +
+  facet_wrap(~Site)
+
+```
+
+### Greenhouse Gases by Site x Visit x Year
+
+Out of curiosity, we could see how the greenhouse gas amounts change through the year, between years, at each of the sites. Since there is only 1 sample per year x visit x site combination, we won't be able to model at that level, but it would be worth looking at.
 
 We will first make a plot of CO2 versus visit, for each site, coloured by year.
 
 ```{r, echo=FALSE}
 
-co2_plot <- ggplot(data = data, aes(x = Visit, y = log(pCO2.corrected), group = Year, color = Year)) +
+ggplot(data = data, aes(x = Visit, y = log(pCO2.corrected), group = Year, color = Year)) +
   geom_line() +
   facet_wrap(~Site)
 
-print(co2_plot)
 
 ```
 
@@ -112,25 +152,187 @@ print(n2o_plot)
 
 ```
 
-# Correlations within Data
 
-It would be wise to assess if there are any correlations among the three measured responses here. We can do this as an overall correlation:
+# Modelling Approach
 
-```{r}
+Based on the plots above, I am seeing that there are two different questions we could ask of the data:
 
-cor(data[, c("pCO2.corrected", "pCH4.insitu", "pN2O.insitu")])
+1) How do greenhouse gas concentrations change over a given year, and does this change from year to year? This is based on the Greenhouse Gas by Visit x Year Combination plots above.
+2) How do greenhouse gas concentrations change at a given site, and does this change from year to year? This is based on the Greenhouse Gas by Site x Year Combination plots above. 
+
+Given either of these questions, we want to know if we can answer these questions using only 3 samples from each site in 2025, rather than 5 samples from each site. We will run 3 models for each of these questions; one model per GHG. We will drop sites ON15 until samples are updated.
+
+```{r model-setup, echo=FALSE}
+
+data_red <- data[-which(data$Still.missing.... == "*"), ]
+data_red$Year_Visit <- paste0(data_red$Year, "-", data_red$Visit)
+data_red$Year_Site <- paste0(data_red$Year, "-", data_red$Site)
+
+model <- cmdstan_model("models/model.stan")
 ```
 
-But we can also do this stratified by year, to see if there are any changes in these correlations between the two years. First let's do 2023:
+```{r co2_mod1, echo = FALSE}
+co2_data <- list(N = nrow(data_red),
+                 y = data_red$pCO2.corrected,
+                 n_factor1 = length(unique(data_red$Year)),
+                 factor1 = as.numeric(as.factor(data_red$Year)),
+                 n_factor2 = length(unique(data_red$Visit)),
+                 factor2 = data_red$Visit,
+                 n_interaction = length(unique(data_red$Year_Visit)),
+                 interaction = as.numeric(as.factor(data_red$Year_Visit)))
 
-```{r}
+co2_mod1 <- model$sample(
+  data = co2_data,
+  iter_warmup = 2000,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 10,
+  show_messages = FALSE
+)
 
-cor(data[which(data$Year == "2023"), c("pCO2.corrected", "pCH4.insitu", "pN2O.insitu")])
+co2_mod1_plot <- bayesplot::mcmc_intervals(co2_mod1$draws(c("mu", "alpha", "beta", "gamma")))
+
 ```
 
-Now let's do 2024:
+```{r ch4_mod1, echo = FALSE}
+ch4_data <- list(N = nrow(data_red),
+                 y = data_red$pCH4.insitu,
+                 n_factor1 = length(unique(data_red$Year)),
+                 factor1 = as.numeric(as.factor(data_red$Year)),
+                 n_factor2 = length(unique(data_red$Visit)),
+                 factor2 = data_red$Visit,
+                 n_interaction = length(unique(data_red$Year_Visit)),
+                 interaction = as.numeric(as.factor(data_red$Year_Visit)))
 
-```{r}
+ch4_mod1 <- model$sample(
+  data = ch4_data,
+  iter_warmup = 2000,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 10,
+  show_messages = FALSE
+)
 
-cor(data[which(data$Year == "2024"), c("pCO2.corrected", "pCH4.insitu", "pN2O.insitu")])
+ch4_mod1_plot <- bayesplot::mcmc_intervals(ch4_mod1$draws(c("mu", "alpha", "beta", "gamma"))) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+```{r n2o_mod1, echo = FALSE}
+n2o_data <- list(N = nrow(data_red),
+                 y = data_red$pN2O.insitu,
+                 n_factor1 = length(unique(data_red$Year)),
+                 factor1 = as.numeric(as.factor(data_red$Year)),
+                 n_factor2 = length(unique(data_red$Visit)),
+                 factor2 = data_red$Visit,
+                 n_interaction = length(unique(data_red$Year_Visit)),
+                 interaction = as.numeric(as.factor(data_red$Year_Visit)))
+
+n2o_mod1 <- model$sample(
+  data = n2o_data,
+  iter_warmup = 2000,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 10,
+  show_messages = FALSE
+)
+
+n2o_mod1_plot <- bayesplot::mcmc_intervals(n2o_mod1$draws(c("mu", "alpha", "beta", "gamma"))) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+```{r mod1_plots, echo=FALSE}
+ggarrange(co2_mod1_plot, ch4_mod1_plot + rremove("ylab"), n2o_mod1_plot + rremove("ylab"),
+          labels = c("CO2", "CH4", "N2O"),
+          nrow = 1,
+          widths = c(0.4,0.3,0.3))
+```
+
+
+
+
+
+```{r co2_mod2, echo = FALSE}
+co2_data2 <- list(N = nrow(data_red),
+                 y = data_red$pCO2.corrected,
+                 n_factor1 = length(unique(data_red$Year)),
+                 factor1 = as.numeric(as.factor(data_red$Year)),
+                 n_factor2 = length(unique(data_red$Site)),
+                 factor2 = as.numeric(as.factor(data_red$Site)),
+                 n_interaction = length(unique(data_red$Year_Site)),
+                 interaction = as.numeric(as.factor(data_red$Year_Site)))
+
+co2_mod2 <- model$sample(
+  data = co2_data2,
+  iter_warmup = 2000,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 10,
+  show_messages = FALSE
+)
+
+co2_mod2_plot <- bayesplot::mcmc_intervals(co2_mod2$draws(c("mu", "alpha", "beta", "gamma")))
+
+```
+
+```{r ch4_mod2, echo = FALSE}
+ch4_data2 <- list(N = nrow(data_red),
+                 y = data_red$pCH4.insitu,
+                 n_factor1 = length(unique(data_red$Year)),
+                 factor1 = as.numeric(as.factor(data_red$Year)),
+                 n_factor2 = length(unique(data_red$Site)),
+                 factor2 = as.numeric(as.factor(data_red$Site)),
+                 n_interaction = length(unique(data_red$Year_Site)),
+                 interaction = as.numeric(as.factor(data_red$Year_Site)))
+
+ch4_mod2 <- model$sample(
+  data = ch4_data2,
+  iter_warmup = 2000,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 10,
+  show_messages = FALSE
+)
+
+ch4_mod2_plot <- bayesplot::mcmc_intervals(ch4_mod2$draws(c("mu", "alpha", "beta", "gamma"))) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+```{r n2o_mod2, echo = FALSE}
+n2o_data2 <- list(N = nrow(data_red),
+                 y = data_red$pN2O.insitu,
+                 n_factor1 = length(unique(data_red$Year)),
+                 factor1 = as.numeric(as.factor(data_red$Year)),
+                 n_factor2 = length(unique(data_red$Site)),
+                 factor2 = as.numeric(as.factor(data_red$Site)),
+                 n_interaction = length(unique(data_red$Year_Site)),
+                 interaction = as.numeric(as.factor(data_red$Year_Site)))
+
+n2o_mod2 <- model$sample(
+  data = n2o_data2,
+  iter_warmup = 2000,
+  iter_sampling = 1000,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 10,
+  show_messages = FALSE
+)
+
+n2o_mod2_plot <- bayesplot::mcmc_intervals(n2o_mod2$draws(c("mu", "alpha", "beta", "gamma"))) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+```{r mod2_plots, echo=FALSE}
+ggarrange(co2_mod2_plot, ch4_mod2_plot + rremove("ylab"), n2o_mod2_plot + rremove("ylab"),
+          labels = c("CO2", "CH4", "N2O"),
+          nrow = 1,
+          widths = c(0.4,0.3,0.3))
 ```
