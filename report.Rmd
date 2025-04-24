@@ -160,7 +160,10 @@ Based on the plots above, I am seeing that there are two different questions we 
 1) How do greenhouse gas concentrations change over a given year, and does this change from year to year? This is based on the Greenhouse Gas by Visit x Year Combination plots above.
 2) How do greenhouse gas concentrations change at a given site, and does this change from year to year? This is based on the Greenhouse Gas by Site x Year Combination plots above. 
 
-Given either of these questions, we want to know if we can answer these questions using only 3 samples from each site in 2025, rather than 5 samples from each site. We will run 3 models for each of these questions; one model per GHG. We will drop sites ON15 until samples are updated.
+Given either of these questions, we want to know if we can answer these questions using only 3 samples from each site in 2025, rather than 5 samples from each site. To accomplish this, I will take on the following modelling approach:
+
+1) Run each combination above as a Bayesian mixed effects model. That is, for Question 1, I will treat year as a random effect, and visit as a fixed effect; for Question 2, I will treat year as a random effect, and site as a fixed effect. All models will include an interaction term. I will therefore generate 6 models.
+2) Analyze the posterior distribution of the parameters for each model. To do this, I will plot the median value with the 50% and 90% credible intervals.
 
 ```{r model-setup, echo=FALSE}
 
@@ -188,10 +191,11 @@ co2_mod1 <- model$sample(
   chains = 4,
   parallel_chains = 4,
   refresh = 10,
-  show_messages = FALSE
+  show_messages = FALSE,
+  show_exceptions = FALSE
 )
 
-co2_mod1_plot <- bayesplot::mcmc_intervals(co2_mod1$draws(c("mu", "alpha", "beta", "gamma")))
+co2_mod1_plot <- bayesplot::mcmc_intervals(co2_mod1$draws(c("mu", "alpha_hyper", "alpha", "beta", "gamma_hyper", "gamma")))
 
 ```
 
@@ -212,10 +216,11 @@ ch4_mod1 <- model$sample(
   chains = 4,
   parallel_chains = 4,
   refresh = 10,
-  show_messages = FALSE
+  show_messages = FALSE,
+  show_exceptions = FALSE
 )
 
-ch4_mod1_plot <- bayesplot::mcmc_intervals(ch4_mod1$draws(c("mu", "alpha", "beta", "gamma"))) +
+ch4_mod1_plot <- bayesplot::mcmc_intervals(ch4_mod1$draws(c("mu", "alpha_hyper", "alpha", "beta", "gamma_hyper", "gamma"))) +
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank())
 ```
@@ -237,10 +242,11 @@ n2o_mod1 <- model$sample(
   chains = 4,
   parallel_chains = 4,
   refresh = 10,
-  show_messages = FALSE
+  show_messages = FALSE,
+  show_exceptions = FALSE
 )
 
-n2o_mod1_plot <- bayesplot::mcmc_intervals(n2o_mod1$draws(c("mu", "alpha", "beta", "gamma"))) +
+n2o_mod1_plot <- bayesplot::mcmc_intervals(n2o_mod1$draws(c("mu", "alpha_hyper", "alpha", "beta", "gamma_hyper", "gamma"))) +
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank())
 ```
@@ -273,10 +279,11 @@ co2_mod2 <- model$sample(
   chains = 4,
   parallel_chains = 4,
   refresh = 10,
-  show_messages = FALSE
+  show_messages = FALSE,
+  show_exceptions = FALSE
 )
 
-co2_mod2_plot <- bayesplot::mcmc_intervals(co2_mod2$draws(c("mu", "alpha", "beta", "gamma")))
+co2_mod2_plot <- bayesplot::mcmc_intervals(co2_mod2$draws(c("mu", "alpha_hyper", "alpha", "beta", "gamma_hyper", "gamma")))
 
 ```
 
@@ -297,10 +304,11 @@ ch4_mod2 <- model$sample(
   chains = 4,
   parallel_chains = 4,
   refresh = 10,
-  show_messages = FALSE
+  show_messages = FALSE,
+  show_exceptions = FALSE
 )
 
-ch4_mod2_plot <- bayesplot::mcmc_intervals(ch4_mod2$draws(c("mu", "alpha", "beta", "gamma"))) +
+ch4_mod2_plot <- bayesplot::mcmc_intervals(ch4_mod2$draws(c("mu", "alpha_hyper", "alpha", "beta", "gamma_hyper", "gamma"))) +
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank())
 ```
@@ -322,10 +330,11 @@ n2o_mod2 <- model$sample(
   chains = 4,
   parallel_chains = 4,
   refresh = 10,
-  show_messages = FALSE
+  show_messages = FALSE,
+  show_exceptions = FALSE
 )
 
-n2o_mod2_plot <- bayesplot::mcmc_intervals(n2o_mod2$draws(c("mu", "alpha", "beta", "gamma"))) +
+n2o_mod2_plot <- bayesplot::mcmc_intervals(n2o_mod2$draws(c("mu", "alpha_hyper", "alpha", "beta", "gamma_hyper", "gamma"))) +
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank())
 ```
@@ -336,3 +345,4 @@ ggarrange(co2_mod2_plot, ch4_mod2_plot + rremove("ylab"), n2o_mod2_plot + rremov
           nrow = 1,
           widths = c(0.4,0.3,0.3))
 ```
+
