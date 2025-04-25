@@ -16,7 +16,7 @@ parameters {
   real mu;
   
   real alpha_hyper;
-  //real beta_hyper;
+ // real beta_hyper;
   real gamma_hyper;
   
   row_vector [n_factor1] alpha_raw;
@@ -24,9 +24,9 @@ parameters {
   row_vector [n_interaction] gamma_raw;
   
   real<lower=0> sigma;
-  real<lower = 0> sigma_alpha;
+  //real<lower = 0> sigma_alpha;
   //real<lower = 0> sigma_beta;
-  real<lower = 0> sigma_gamma;
+  //real<lower = 0> sigma_gamma;
 }
 
 transformed parameters {
@@ -34,9 +34,9 @@ transformed parameters {
  // row_vector [n_factor2] beta;
   row_vector [n_interaction] gamma;  
   
-  alpha = alpha_hyper + alpha_raw * sigma_alpha;
- // beta = beta_hyper + beta_raw * sigma_beta;
-  gamma = gamma_hyper + gamma_raw + sigma_gamma;
+  alpha = alpha_hyper + alpha_raw;// * sigma_alpha;
+  //beta = beta_hyper + beta_raw;// * sigma_beta;
+  gamma = gamma_hyper + gamma_raw;// + sigma_gamma;
 }
 
 // The model to be estimated. We model the output
@@ -56,13 +56,13 @@ model {
   gamma_raw ~ std_normal();
   
   alpha_hyper ~ std_normal();
-  sigma_alpha ~ exponential(1);
+  //sigma_alpha ~ exponential(1);
   
   //beta_hyper ~ std_normal();
- // sigma_beta ~ exponential(1);
+  //sigma_beta ~ exponential(1);
   
   gamma_hyper ~ std_normal();
-  sigma_gamma ~ exponential(1);
+  //sigma_gamma ~ exponential(1);
   
   sigma ~ exponential(1);
 }
